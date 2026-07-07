@@ -156,24 +156,7 @@ public class MainActivity extends Activity {
             if (mmr != null) try { mmr.release(); } catch (Exception ignored) {}
         }
 
-        // 2: Direct MediaStore query on the URI itself (DATE_TAKEN, DATE_ADDED, DATE_MODIFIED)
-        if (dateTaken <= 0 && uri != null) {
-            try (Cursor c = getContentResolver().query(uri,
-                    new String[]{
-                            MediaStore.Images.Media.DATE_TAKEN,
-                            MediaStore.Images.Media.DATE_ADDED,
-                            MediaStore.Images.Media.DATE_MODIFIED
-                    }, null, null, null)) {
-                if (c != null && c.moveToFirst()) {
-                    long v;
-                    if (!c.isNull(0) && (v = c.getLong(0)) > 0) { dateTaken = v; debugSrc = "DT"; }
-                    if (dateTaken <= 0 && !c.isNull(1) && (v = c.getLong(1)) > 0) { dateTaken = v * 1000; debugSrc = "DA"; }
-                    if (dateTaken <= 0 && !c.isNull(2) && (v = c.getLong(2)) > 0) { dateTaken = v * 1000; debugSrc = "DM"; }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        // 3: DocumentsContract URI → extract media ID → query MediaStore
+        // 2: DocumentsContract URI → extract media ID → query MediaStore
         if (dateTaken <= 0 && uri != null) {
             try {
                 if (DocumentsContract.isDocumentUri(this, uri)) {
@@ -204,7 +187,7 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {}
         }
 
-        // 4: Old-style "media" authority URI → extract path ID → query MediaStore
+        // 3: Old-style "media" authority URI → extract path ID → query MediaStore
         if (dateTaken <= 0 && uri != null && "media".equals(uri.getAuthority())) {
             try {
                 String mediaId = uri.getLastPathSegment();
@@ -221,7 +204,7 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {}
         }
 
-        // 5: Copy to temp file → read EXIF (all date tags)
+        // 4: Copy to temp file → read EXIF (all date tags)
         if (dateTaken <= 0 && uri != null) {
             File tf = null;
             try {
@@ -256,7 +239,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        // 6: Parse date from filename (strip non-digits, take first 14 chars)
+        // 5: Parse date from filename (strip non-digits, take first 14 chars)
         if (dateTaken <= 0 && originalName != null) {
             String digits = originalName.replaceAll("\\D", "");
             if (digits.length() >= 14) {
