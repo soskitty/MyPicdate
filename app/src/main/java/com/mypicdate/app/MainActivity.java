@@ -246,15 +246,39 @@ public class MainActivity extends Activity {
             }
         }
 
-        // 5: Parse date from filename (strip non-digits, take first 14 chars)
+        // 5: Parse date from filename
         if (dateTaken <= 0 && originalName != null) {
             String digits = originalName.replaceAll("\\D", "");
             if (digits.length() >= 14) {
                 try {
                     Date p = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US).parse(digits.substring(0, 14));
-                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN"; }
+                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN14"; }
                 } catch (Exception ignored) {}
             }
+            if (dateTaken <= 0 && digits.length() >= 8) {
+                try {
+                    Date p = new SimpleDateFormat("yyyyMMdd", Locale.US).parse(digits.substring(0, 8));
+                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN8"; }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 6: Find original file in MediaStore by matching filename → get DATE_TAKEN
+        if (dateTaken <= 0 && originalName != null) {
+            String searchName = originalName;
+            int dot = searchName.lastIndexOf('.');
+            if (dot > 0) searchName = searchName.substring(0, dot);
+            try (Cursor c = getContentResolver().query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    new String[]{MediaStore.Images.Media.DATE_TAKEN},
+                    MediaStore.Images.Media.DISPLAY_NAME + " LIKE ?",
+                    new String[]{searchName + "%"},
+                    MediaStore.Images.Media.DATE_TAKEN + " DESC")) {
+                if (c != null && c.moveToFirst() && !c.isNull(0)) {
+                    long v = c.getLong(0);
+                    if (v > 0) { dateTaken = v; debugSrc = "MS"; }
+                }
+            } catch (Exception ignored) {}
         }
 
         // Diagnostic toast (remove after debugging)
