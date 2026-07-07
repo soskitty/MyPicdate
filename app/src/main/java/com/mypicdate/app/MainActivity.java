@@ -143,7 +143,7 @@ public class MainActivity extends Activity {
 
     private void saveAndScan(Bitmap bitmap, String fileName) {
         try {
-            Uri savedUri = null;
+            final Uri[] savedUriRef = {null};
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
@@ -160,7 +160,7 @@ public class MainActivity extends Activity {
                     values.put(MediaStore.Images.Media.IS_PENDING, 0);
                     getContentResolver().update(uri, values, null, null);
                     getContentResolver().notifyChange(uri, null);
-                    savedUri = uri;
+                    savedUriRef[0] = uri;
                 }
             } else {
                 File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MyPicdate");
@@ -174,9 +174,9 @@ public class MainActivity extends Activity {
             String fullPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/MyPicdate/" + fileName;
             MediaScannerConnection.scanFile(this, new String[]{fullPath}, null,
                     (path, uri) -> {
-                        if (savedUri != null) {
+                        if (savedUriRef[0] != null) {
                             Intent broadcast = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                            broadcast.setData(savedUri);
+                            broadcast.setData(savedUriRef[0]);
                             sendBroadcast(broadcast);
                         }
                         runOnUiThread(() -> {
