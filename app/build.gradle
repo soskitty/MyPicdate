@@ -1,0 +1,45 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.mypicdate.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.mypicdate.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('picdate.keystore')
+            storePassword '123456'
+            keyAlias 'picdate'
+            keyPassword '123456'
+        }
+        debug {
+            storeFile file('picdate.keystore')
+            storePassword '123456'
+            keyAlias 'picdate'
+            keyPassword '123456'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            debuggable false
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
