@@ -249,13 +249,25 @@ public class MainActivity extends Activity {
         // 5: Parse date from filename
         if (dateTaken <= 0 && originalName != null) {
             String digits = originalName.replaceAll("\\D", "");
-            if (digits.length() >= 14) {
+            int len = digits.length();
+            // 13-digit Unix millisecond timestamp (used by MIUI SecurityShare)
+            if (len >= 13 && len <= 14) {
+                try {
+                    long ts = Long.parseLong(digits.substring(0, 13));
+                    if (ts > 1000000000000L && ts < 9999999999999L && ts > 0) {
+                        dateTaken = ts; debugSrc = "UNIX";
+                    }
+                } catch (Exception ignored) {}
+            }
+            // 14-digit yyyyMMddHHmmss
+            if (dateTaken <= 0 && len >= 14) {
                 try {
                     Date p = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US).parse(digits.substring(0, 14));
                     if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN14"; }
                 } catch (Exception ignored) {}
             }
-            if (dateTaken <= 0 && digits.length() >= 8) {
+            // 8-digit yyyyMMdd
+            if (dateTaken <= 0 && len >= 8) {
                 try {
                     Date p = new SimpleDateFormat("yyyyMMdd", Locale.US).parse(digits.substring(0, 8));
                     if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN8"; }
