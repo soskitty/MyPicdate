@@ -1,6 +1,7 @@
 package com.mypicdate.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
@@ -27,40 +28,49 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
 
+    private Uri imageUri;
+    private String originalName;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        try {
-            handleIntent();
-        } catch (Exception e) {
-            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            finish();
-        }
-    }
-
-    private void handleIntent() throws Exception {
         Intent intent = getIntent();
         if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) {
             finish();
             return;
         }
 
-        Uri imageUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        imageUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
         if (imageUri == null) {
             Toast.makeText(this, "No image received", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        String originalName = getFileName(imageUri);
+        originalName = getFileName(imageUri);
         if (originalName == null) originalName = "photo.jpg";
 
-        String baseName = originalName;
-        int dotIndex = originalName.lastIndexOf('.');
-        if (dotIndex > 0) baseName = originalName.substring(0, dotIndex);
-        String outputName = baseName + "_d.jpg";
+        showFontSizeDialog();
+    }
 
+    private void showFontSizeDialog() {
+        final String[] items = {"1 (最小)", "2 (较小)", "3 (适中)", "4 (较大)", "5 (最大)"};
+        new AlertDialog.Builder(this)
+                .setTitle("选择字号")
+                .setItems(items, (dialog, which) -> {
+                    try {
+                        processImage(which + 1);
+                    } catch (Exception e) {
+                        Toast.makeText(MainActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        finish();
+                    }
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    private void processImage(int fontSizeLevel) throws Exception {
         Bitmap original;
         try (InputStream is = getContentResolver().openInputStream(imageUri)) {
             original = BitmapFactory.decodeStream(is);
@@ -79,25 +89,36 @@ public class MainActivity extends Activity {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
         String dateText = sdf.format(new Date());
 
-        int textSize = Math.max(12, result.getWidth() / 60);
+        int imgW = result.getWidth();
+        int imgH = result.getHeight();
+        int imgMin = Math.min(imgW, imgH);
+
+        float[] multipliers = {0.5f, 0.7f, 1.0f, 1.4f, 1.8f};
+        float textSize = (imgMin * 0.03f) * multipliers[fontSizeLevel - 1];
+        textSize = Math.max(10, textSize);
+
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(Color.WHITE);
         paint.setTextSize(textSize);
         paint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        paint.setShadowLayer(3f, 1f, 1f, Color.BLACK);
+        paint.setShadowLayer(textSize * 0.15f, textSize * 0.05f, textSize * 0.05f, Color.BLACK);
 
-        float padding = 8f * getResources().getDisplayMetrics().density;
+        float padding = imgMin * 0.03f;
         float textWidth = paint.measureText(dateText);
         float x = result.getWidth() - textWidth - padding;
         float y = result.getHeight() - padding;
 
         canvas.drawText(dateText, x, y, paint);
 
+        String baseName = originalName;
+        int dotIndex = originalName.lastIndexOf('.');
+        if (dotIndex > 0) baseName = originalName.substring(0, dotIndex);
+        String outputName = baseName + "_d.jpg";
+
         saveToGallery(result, outputName);
         result.recycle();
 
         launchGallery();
-
         Toast.makeText(this, "Saved: " + outputName, Toast.LENGTH_SHORT).show();
         finish();
     }
