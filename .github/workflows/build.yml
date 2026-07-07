@@ -37,7 +37,9 @@ jobs:
           yes | "$SDKMAN" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
 
       - name: Generate Keystore
-        run: keytool -genkey -v -keystore app/picdate.keystore -alias picdate -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=MyPicdate, OU=Dev, O=MyPicdate, L=Beijing, ST=Beijing, C=CN"
+        run: |
+          rm -f app/picdate.keystore
+          keytool -genkey -v -keystore app/picdate.keystore -alias picdate -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=MyPicdate, OU=Dev, O=MyPicdate, L=Beijing, ST=Beijing, C=CN"
 
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon
