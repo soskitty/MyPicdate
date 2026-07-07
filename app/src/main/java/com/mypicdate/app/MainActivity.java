@@ -263,7 +263,44 @@ public class MainActivity extends Activity {
             }
         }
 
-        // 6: Find original file in MediaStore by matching filename → get DATE_TAKEN
+        // 6: Try URI path numeric segment as MediaStore _ID, verify by size
+        if (dateTaken <= 0 && uri != null) {
+            String pathId = uri.getLastPathSegment();
+            if (pathId != null && pathId.matches("\\d+")) {
+                try {
+                    Uri mu = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Long.parseLong(pathId));
+                    try (Cursor c = getContentResolver().query(mu,
+                            new String[]{MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.SIZE},
+                            null, null, null)) {
+                        if (c != null && c.moveToFirst() && !c.isNull(0)) {
+                            long v = c.getLong(0);
+                            long sz = c.isNull(1) ? -1 : c.getLong(1);
+                            if (v > 0 && (sz < 0 || tempSize <= 0 || sz == tempSize)) {
+                                dateTaken = v; debugSrc = "MID";
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 7: Match by file size in MediaStore (MIUI secure share may preserve original size)
+        if (dateTaken <= 0 && tempSize > 0) {
+            try (Cursor c = getContentResolver().query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    new String[]{MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.BUCKET_DISPLAY_NAME},
+                    MediaStore.Images.Media.SIZE + " = ?",
+                    new String[]{String.valueOf(tempSize)},
+                    MediaStore.Images.Media.DATE_TAKEN + " DESC")) {
+                if (c != null) {
+                    while (c.moveToNext() && dateTaken <= 0) {
+                        if (!c.isNull(0)) { long v = c.getLong(0); if (v > 0) { dateTaken = v; debugSrc = "SZ"; } }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 8: Find original file in MediaStore by matching filename → get DATE_TAKEN
         if (dateTaken <= 0 && originalName != null) {
             String searchName = originalName;
             int dot = searchName.lastIndexOf('.');
