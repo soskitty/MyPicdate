@@ -146,15 +146,6 @@ public class MainActivity extends Activity {
         }
 
         if (dateTaken <= 0) {
-            try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.LAST_MODIFIED}, null, null, null)) {
-                if (c != null && c.moveToFirst()) {
-                    long lm = c.getLong(0);
-                    if (lm > 0) dateTaken = lm;
-                }
-            } catch (Exception ignored) {}
-        }
-
-        if (dateTaken <= 0) {
             File tempFile = null;
             try {
                 tempFile = File.createTempFile("exif_", ".jpg", getCacheDir());
