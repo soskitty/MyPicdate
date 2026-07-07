@@ -17,7 +17,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.widget.Toast;
@@ -127,19 +126,28 @@ public class MainActivity extends Activity {
     }
 
     private String getDateString(Uri uri) {
-        try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
-            if (pfd != null) {
-                ExifInterface exif = new ExifInterface(pfd.getFileDescriptor());
-                String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
-                if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
-                if (exifDate != null) {
-                    SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
-                    SimpleDateFormat outSdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
-                    Date parsed = exifSdf.parse(exifDate);
-                    if (parsed != null) return outSdf.format(parsed);
-                }
+        File tempFile = null;
+        try {
+            tempFile = File.createTempFile("exif_", ".jpg", getCacheDir());
+            try (InputStream is = getContentResolver().openInputStream(uri);
+                 FileOutputStream fos = new FileOutputStream(tempFile)) {
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
             }
-        } catch (Exception ignored) {}
+            ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
+            String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
+            if (exifDate != null) {
+                SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
+                SimpleDateFormat outSdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
+                Date parsed = exifSdf.parse(exifDate);
+                if (parsed != null) return outSdf.format(parsed);
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (tempFile != null) tempFile.delete();
+        }
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
         return sdf.format(new Date());
     }
