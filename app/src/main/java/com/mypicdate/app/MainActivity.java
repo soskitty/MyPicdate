@@ -117,12 +117,8 @@ public class MainActivity extends Activity {
         if (dotIndex > 0) baseName = originalName.substring(0, dotIndex);
         String outputName = baseName + "_d.jpg";
 
-        saveToGallery(result, outputName);
+        saveAndScan(result, outputName);
         result.recycle();
-
-        launchGallery();
-        Toast.makeText(this, "Saved: " + outputName, Toast.LENGTH_SHORT).show();
-        finish();
     }
 
     private String getFileName(Uri uri) {
@@ -145,36 +141,56 @@ public class MainActivity extends Activity {
         return name;
     }
 
-    private void saveToGallery(Bitmap bitmap, String fileName) throws Exception {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-            values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MyPicdate");
-            values.put(MediaStore.Images.Media.IS_PENDING, 1);
+    private void saveAndScan(Bitmap bitmap, String fileName) {
+        try {
+            Uri savedUri = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+                values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MyPicdate");
+                values.put(MediaStore.Images.Media.IS_PENDING, 1);
 
-            Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-            if (uri != null) {
-                try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(uri)) {
+                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                if (uri != null) {
+                    try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(uri)) {
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
+                    }
+                    values.clear();
+                    values.put(MediaStore.Images.Media.IS_PENDING, 0);
+                    getContentResolver().update(uri, values, null, null);
+                    getContentResolver().notifyChange(uri, null);
+                    savedUri = uri;
+                }
+            } else {
+                File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MyPicdate");
+                if (!dir.exists()) dir.mkdirs();
+                File file = new File(dir, fileName);
+                try (FileOutputStream fos = new FileOutputStream(file)) {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
                 }
-                values.clear();
-                values.put(MediaStore.Images.Media.IS_PENDING, 0);
-                getContentResolver().update(uri, values, null, null);
             }
-        } else {
-            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MyPicdate");
-            if (!dir.exists()) dir.mkdirs();
-            File file = new File(dir, fileName);
-            try (FileOutputStream fos = new FileOutputStream(file)) {
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
-            }
-            Intent scanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-            scanIntent.setData(Uri.fromFile(file));
-            sendBroadcast(scanIntent);
+
+            String fullPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/MyPicdate/" + fileName;
+            MediaScannerConnection.scanFile(this, new String[]{fullPath}, null,
+                    (path, uri) -> {
+                        if (savedUri != null) {
+                            Intent broadcast = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                            broadcast.setData(savedUri);
+                            sendBroadcast(broadcast);
+                        }
+                        runOnUiThread(() -> {
+                            launchGallery();
+                            Toast.makeText(MainActivity.this, "Saved: " + fileName, Toast.LENGTH_SHORT).show();
+                            finish();
+                        });
+                    });
+        } catch (Exception e) {
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Save error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                finish();
+            });
         }
-        String fullPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/MyPicdate/" + fileName;
-        MediaScannerConnection.scanFile(this, new String[]{fullPath}, null, null);
     }
 
     private void launchGallery() {
