@@ -131,6 +131,9 @@ public class MainActivity extends Activity {
     private String getDateString(Uri uri) {
         long dateTaken = 0;
         String debugSrc = null;
+        String debugInfo = "";
+        String mmrRaw = "";
+        long tempSize = 0;
 
         // 1: MediaMetadataRetriever (works with any content URI natively)
         MediaMetadataRetriever mmr = null;
@@ -139,12 +142,14 @@ public class MainActivity extends Activity {
             mmr.setDataSource(this, uri);
             String date = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE);
             if (date != null && !date.isEmpty()) {
+                mmrRaw = date.length() > 25 ? date.substring(0, 25) : date;
                 SimpleDateFormat[] fmts = {
                     new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US),
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US),
                     new SimpleDateFormat("yyyyMMdd", Locale.US)
                 };
                 for (SimpleDateFormat f : fmts) {
+                    f.setLenient(false);
                     try {
                         Date p = f.parse(date);
                         if (p != null) { dateTaken = p.getTime(); debugSrc = "MMR"; break; }
@@ -216,7 +221,8 @@ public class MainActivity extends Activity {
                     while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
                     fos.flush();
                 }
-                if (tf.length() > 0) {
+                tempSize = tf.length();
+                if (tempSize > 0) {
                     ExifInterface exif = new ExifInterface(tf.getAbsolutePath());
                     String[] tags = {
                         ExifInterface.TAG_DATETIME_ORIGINAL,
@@ -227,7 +233,8 @@ public class MainActivity extends Activity {
                         String exifDate = exif.getAttribute(tag);
                         if (exifDate != null) {
                             try {
-                                Date p = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(exifDate);
+                                SimpleDateFormat sdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
+                                Date p = sdf.parse(exifDate);
                                 if (p != null) { dateTaken = p.getTime(); debugSrc = "EXIF"; break; }
                             } catch (Exception ignored) {}
                         }
@@ -252,8 +259,12 @@ public class MainActivity extends Activity {
 
         // Diagnostic toast (remove after debugging)
         if (uri != null) {
-            String msg = (debugSrc != null ? debugSrc : "NOW") + " | " + uri.getAuthority();
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+            String fn = originalName != null && originalName.length() > 20 ? originalName.substring(0, 20) + ".." : originalName;
+            String src = debugSrc != null ? debugSrc : "NOW";
+            String msg = src + "|" + uri.getAuthority() + " sz=" + tempSize;
+            if (!mmrRaw.isEmpty()) msg += " mmr=" + mmrRaw;
+            if (fn != null) msg += " " + fn;
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
         }
 
         if (dateTaken > 0) {
