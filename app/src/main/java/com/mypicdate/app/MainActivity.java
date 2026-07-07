@@ -130,9 +130,6 @@ public class MainActivity extends Activity {
 
     private String getDateString(Uri uri) {
         long dateTaken = 0;
-        String debugSrc = null;
-        String debugInfo = "";
-        String mmrRaw = "";
         long tempSize = 0;
 
         // 1: MediaMetadataRetriever (works with any content URI natively)
@@ -142,7 +139,6 @@ public class MainActivity extends Activity {
             mmr.setDataSource(this, uri);
             String date = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE);
             if (date != null && !date.isEmpty()) {
-                mmrRaw = date.length() > 25 ? date.substring(0, 25) : date;
                 SimpleDateFormat[] fmts = {
                     new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US),
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US),
@@ -152,7 +148,7 @@ public class MainActivity extends Activity {
                     f.setLenient(false);
                     try {
                         Date p = f.parse(date);
-                        if (p != null) { dateTaken = p.getTime(); debugSrc = "MMR"; break; }
+                        if (p != null) { dateTaken = p.getTime(); break; }
                     } catch (Exception ignored) {}
                 }
             }
@@ -182,7 +178,7 @@ public class MainActivity extends Activity {
                                         new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
                                     if (c != null && c.moveToFirst() && !c.isNull(0)) {
                                         long v = c.getLong(0);
-                                        if (v > 0) { dateTaken = v; debugSrc = "DC"; }
+                                        if (v > 0) { dateTaken = v; }
                                     }
                                 }
                             }
@@ -202,7 +198,7 @@ public class MainActivity extends Activity {
                             new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
                         if (c != null && c.moveToFirst() && !c.isNull(0)) {
                             long v = c.getLong(0);
-                            if (v > 0) { dateTaken = v; debugSrc = "MI"; }
+                            if (v > 0) { dateTaken = v; }
                         }
                     }
                 }
@@ -235,7 +231,7 @@ public class MainActivity extends Activity {
                             try {
                                 SimpleDateFormat sdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
                                 Date p = sdf.parse(exifDate);
-                                if (p != null) { dateTaken = p.getTime(); debugSrc = "EXIF"; break; }
+                                if (p != null) { dateTaken = p.getTime(); break; }
                             } catch (Exception ignored) {}
                         }
                     }
@@ -255,7 +251,7 @@ public class MainActivity extends Activity {
                 try {
                     long ts = Long.parseLong(digits.substring(0, 13));
                     if (ts > 1000000000000L && ts < 9999999999999L && ts > 0) {
-                        dateTaken = ts; debugSrc = "UNIX";
+                        dateTaken = ts;
                     }
                 } catch (Exception ignored) {}
             }
@@ -263,14 +259,14 @@ public class MainActivity extends Activity {
             if (dateTaken <= 0 && len >= 14) {
                 try {
                     Date p = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US).parse(digits.substring(0, 14));
-                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN14"; }
+                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); }
                 } catch (Exception ignored) {}
             }
             // 8-digit yyyyMMdd
             if (dateTaken <= 0 && len >= 8) {
                 try {
                     Date p = new SimpleDateFormat("yyyyMMdd", Locale.US).parse(digits.substring(0, 8));
-                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN8"; }
+                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); }
                 } catch (Exception ignored) {}
             }
         }
@@ -288,7 +284,7 @@ public class MainActivity extends Activity {
                             long v = c.getLong(0);
                             long sz = c.isNull(1) ? -1 : c.getLong(1);
                             if (v > 0 && (sz < 0 || tempSize <= 0 || sz == tempSize)) {
-                                dateTaken = v; debugSrc = "MID";
+                                dateTaken = v;
                             }
                         }
                     }
@@ -308,7 +304,7 @@ public class MainActivity extends Activity {
                     MediaStore.Images.Media.DATE_TAKEN + " DESC")) {
                 if (c != null) {
                     while (c.moveToNext() && dateTaken <= 0) {
-                        if (!c.isNull(0)) { long v = c.getLong(0); if (v > 0) { dateTaken = v; debugSrc = "SZr"; } }
+                        if (!c.isNull(0)) { long v = c.getLong(0); if (v > 0) { dateTaken = v; } }
                     }
                 }
             } catch (Exception ignored) {}
@@ -327,19 +323,9 @@ public class MainActivity extends Activity {
                     MediaStore.Images.Media.DATE_TAKEN + " DESC")) {
                 if (c != null && c.moveToFirst() && !c.isNull(0)) {
                     long v = c.getLong(0);
-                    if (v > 0) { dateTaken = v; debugSrc = "MS"; }
+                    if (v > 0) { dateTaken = v; }
                 }
             } catch (Exception ignored) {}
-        }
-
-        // Diagnostic toast (remove after debugging)
-        if (uri != null) {
-            String fn = originalName != null && originalName.length() > 20 ? originalName.substring(0, 20) + ".." : originalName;
-            String src = debugSrc != null ? debugSrc : "NOW";
-            String msg = src + "|" + uri.getAuthority() + " sz=" + tempSize;
-            if (!mmrRaw.isEmpty()) msg += " mmr=" + mmrRaw;
-            if (fn != null) msg += " " + fn;
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
         }
 
         if (dateTaken > 0) {
