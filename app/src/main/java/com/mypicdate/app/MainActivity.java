@@ -13,11 +13,13 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.media.ExifInterface;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.widget.Toast;
@@ -128,54 +130,147 @@ public class MainActivity extends Activity {
 
     private String getDateString(Uri uri) {
         long dateTaken = 0;
+        String debugSrc = null;
 
+        // 1: MediaMetadataRetriever (works with any content URI natively)
+        MediaMetadataRetriever mmr = null;
         try {
-            String mediaId = uri.getLastPathSegment();
-            if (mediaId != null && mediaId.matches("\\d+")) {
-                Uri mediaUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Long.parseLong(mediaId));
-                try (Cursor c = getContentResolver().query(mediaUri, new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
-                    if (c != null && c.moveToFirst()) dateTaken = c.getLong(0);
+            mmr = new MediaMetadataRetriever();
+            mmr.setDataSource(this, uri);
+            String date = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE);
+            if (date != null && !date.isEmpty()) {
+                SimpleDateFormat[] fmts = {
+                    new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US),
+                    new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US),
+                    new SimpleDateFormat("yyyyMMdd", Locale.US)
+                };
+                for (SimpleDateFormat f : fmts) {
+                    try {
+                        Date p = f.parse(date);
+                        if (p != null) { dateTaken = p.getTime(); debugSrc = "MMR"; break; }
+                    } catch (Exception ignored) {}
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        } finally {
+            if (mmr != null) mmr.release();
+        }
 
-        if (dateTaken <= 0) {
-            try (Cursor c = getContentResolver().query(uri, new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
-                if (c != null && c.moveToFirst()) dateTaken = c.getLong(0);
+        // 2: Direct MediaStore query on the URI itself (DATE_TAKEN, DATE_ADDED, DATE_MODIFIED)
+        if (dateTaken <= 0 && uri != null) {
+            try (Cursor c = getContentResolver().query(uri,
+                    new String[]{
+                            MediaStore.Images.Media.DATE_TAKEN,
+                            MediaStore.Images.Media.DATE_ADDED,
+                            MediaStore.Images.Media.DATE_MODIFIED
+                    }, null, null, null)) {
+                if (c != null && c.moveToFirst()) {
+                    long v;
+                    if (!c.isNull(0) && (v = c.getLong(0)) > 0) { dateTaken = v; debugSrc = "DT"; }
+                    if (dateTaken <= 0 && !c.isNull(1) && (v = c.getLong(1)) > 0) { dateTaken = v * 1000; debugSrc = "DA"; }
+                    if (dateTaken <= 0 && !c.isNull(2) && (v = c.getLong(2)) > 0) { dateTaken = v * 1000; debugSrc = "DM"; }
+                }
             } catch (Exception ignored) {}
         }
 
-        if (dateTaken <= 0) {
-            File tempFile = null;
+        // 3: DocumentsContract URI → extract media ID → query MediaStore
+        if (dateTaken <= 0 && uri != null) {
             try {
-                tempFile = File.createTempFile("exif_", ".jpg", getCacheDir());
+                if (DocumentsContract.isDocumentUri(this, uri)) {
+                    String docId = DocumentsContract.getDocumentId(uri);
+                    if (docId != null && docId.contains(":")) {
+                        String[] parts = docId.split(":");
+                        String type = parts[0];
+                        String id = parts[1];
+                        if (id.matches("\\d+")) {
+                            Uri collection = "image".equals(type)
+                                    ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                                    : "video".equals(type)
+                                            ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                            : null;
+                            if (collection != null) {
+                                Uri mu = ContentUris.withAppendedId(collection, Long.parseLong(id));
+                                try (Cursor c = getContentResolver().query(mu,
+                                        new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
+                                    if (c != null && c.moveToFirst() && !c.isNull(0)) {
+                                        long v = c.getLong(0);
+                                        if (v > 0) { dateTaken = v; debugSrc = "DC"; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 4: Old-style "media" authority URI → extract path ID → query MediaStore
+        if (dateTaken <= 0 && uri != null && "media".equals(uri.getAuthority())) {
+            try {
+                String mediaId = uri.getLastPathSegment();
+                if (mediaId != null && mediaId.matches("\\d+")) {
+                    Uri mu = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Long.parseLong(mediaId));
+                    try (Cursor c = getContentResolver().query(mu,
+                            new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
+                        if (c != null && c.moveToFirst() && !c.isNull(0)) {
+                            long v = c.getLong(0);
+                            if (v > 0) { dateTaken = v; debugSrc = "MI"; }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 5: Copy to temp file → read EXIF (all date tags)
+        if (dateTaken <= 0 && uri != null) {
+            File tf = null;
+            try {
+                tf = File.createTempFile("exif_", ".jpg", getCacheDir());
                 try (InputStream is = getContentResolver().openInputStream(uri);
-                     FileOutputStream fos = new FileOutputStream(tempFile)) {
+                     FileOutputStream fos = new FileOutputStream(tf)) {
                     byte[] buf = new byte[8192];
                     int n;
                     while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
+                    fos.flush();
                 }
-                ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
-                String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
-                if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
-                if (exifDate != null) {
-                    Date parsed = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(exifDate);
-                    if (parsed != null) dateTaken = parsed.getTime();
+                if (tf.length() > 0) {
+                    ExifInterface exif = new ExifInterface(tf.getAbsolutePath());
+                    String[] tags = {
+                        ExifInterface.TAG_DATETIME_ORIGINAL,
+                        ExifInterface.TAG_DATETIME,
+                        ExifInterface.TAG_DATETIME_DIGITIZED
+                    };
+                    for (String tag : tags) {
+                        String exifDate = exif.getAttribute(tag);
+                        if (exifDate != null) {
+                            try {
+                                Date p = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(exifDate);
+                                if (p != null) { dateTaken = p.getTime(); debugSrc = "EXIF"; break; }
+                            } catch (Exception ignored) {}
+                        }
+                    }
                 }
             } catch (Exception ignored) {
             } finally {
-                if (tempFile != null) tempFile.delete();
+                if (tf != null) tf.delete();
             }
         }
 
+        // 6: Parse date from filename (strip non-digits, take first 14 chars)
         if (dateTaken <= 0 && originalName != null) {
-            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{8})[_-]?(\\d{6})").matcher(originalName);
-            if (m.find()) {
+            String digits = originalName.replaceAll("\\D", "");
+            if (digits.length() >= 14) {
                 try {
-                    Date parsed = new SimpleDateFormat("yyyyMMdd HHmmss", Locale.US).parse(m.group(1) + m.group(2));
-                    if (parsed != null) dateTaken = parsed.getTime();
+                    Date p = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US).parse(digits.substring(0, 14));
+                    if (p != null && p.getTime() > 0) { dateTaken = p.getTime(); debugSrc = "FN"; }
                 } catch (Exception ignored) {}
             }
+        }
+
+        // Diagnostic toast (remove after debugging)
+        if (uri != null) {
+            String msg = (debugSrc != null ? debugSrc : "NOW") + " | " + uri.getAuthority();
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
         }
 
         if (dateTaken > 0) {
