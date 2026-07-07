@@ -98,16 +98,17 @@ public class MainActivity extends Activity {
         textSize = Math.max(10, textSize);
 
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.WHITE);
+        paint.setTypeface(Typeface.DEFAULT_BOLD);
         paint.setTextSize(textSize);
-        paint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        paint.setShadowLayer(textSize * 0.15f, textSize * 0.05f, textSize * 0.05f, Color.BLACK);
 
         float padding = imgMin * 0.03f;
         float textWidth = paint.measureText(dateText);
         float x = result.getWidth() - textWidth - padding;
         float y = result.getHeight() - padding;
 
+        paint.setColor(Color.argb(128, 0, 0, 0));
+        canvas.drawText(dateText, x + 1, y + 1, paint);
+        paint.setColor(Color.WHITE);
         canvas.drawText(dateText, x, y, paint);
 
         String baseName = originalName;
