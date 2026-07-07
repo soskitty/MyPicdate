@@ -5,13 +5,13 @@ import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
-import android.media.MediaScannerConnection;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -86,10 +86,9 @@ public class MainActivity extends Activity {
         Bitmap result = original.copy(Bitmap.Config.ARGB_8888, true);
         original.recycle();
 
-        Canvas canvas = new Canvas(result);
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
-        String dateText = sdf.format(new Date());
+        String dateText = getDateString(imageUri);
 
+        Canvas canvas = new Canvas(result);
         int imgW = result.getWidth();
         int imgH = result.getHeight();
         int imgMin = Math.min(imgW, imgH);
@@ -117,8 +116,28 @@ public class MainActivity extends Activity {
         if (dotIndex > 0) baseName = originalName.substring(0, dotIndex);
         String outputName = baseName + "_d.jpg";
 
-        saveAndScan(result, outputName);
+        saveToGallery(result, outputName);
         result.recycle();
+
+        launchGallery();
+        Toast.makeText(this, "Saved: " + outputName, Toast.LENGTH_SHORT).show();
+        finish();
+    }
+
+    private String getDateString(Uri uri) {
+        try (InputStream is = getContentResolver().openInputStream(uri)) {
+            ExifInterface exif = new ExifInterface(is);
+            String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
+            if (exifDate != null) {
+                SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
+                SimpleDateFormat outSdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
+                Date parsed = exifSdf.parse(exifDate);
+                if (parsed != null) return outSdf.format(parsed);
+            }
+        } catch (Exception ignored) {}
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
+        return sdf.format(new Date());
     }
 
     private String getFileName(Uri uri) {
@@ -141,55 +160,33 @@ public class MainActivity extends Activity {
         return name;
     }
 
-    private void saveAndScan(Bitmap bitmap, String fileName) {
-        try {
-            final Uri[] savedUriRef = {null};
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
-                values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MyPicdate");
-                values.put(MediaStore.Images.Media.IS_PENDING, 1);
+    private void saveToGallery(Bitmap bitmap, String fileName) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+            values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MyPicdate");
+            values.put(MediaStore.Images.Media.IS_PENDING, 1);
 
-                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-                if (uri != null) {
-                    try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(uri)) {
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
-                    }
-                    values.clear();
-                    values.put(MediaStore.Images.Media.IS_PENDING, 0);
-                    getContentResolver().update(uri, values, null, null);
-                    getContentResolver().notifyChange(uri, null);
-                    savedUriRef[0] = uri;
-                }
-            } else {
-                File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MyPicdate");
-                if (!dir.exists()) dir.mkdirs();
-                File file = new File(dir, fileName);
-                try (FileOutputStream fos = new FileOutputStream(file)) {
+            Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri != null) {
+                try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(uri)) {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
                 }
+                values.clear();
+                values.put(MediaStore.Images.Media.IS_PENDING, 0);
+                getContentResolver().update(uri, values, null, null);
             }
-
-            String fullPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/MyPicdate/" + fileName;
-            MediaScannerConnection.scanFile(this, new String[]{fullPath}, null,
-                    (path, uri) -> {
-                        if (savedUriRef[0] != null) {
-                            Intent broadcast = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                            broadcast.setData(savedUriRef[0]);
-                            sendBroadcast(broadcast);
-                        }
-                        runOnUiThread(() -> {
-                            launchGallery();
-                            Toast.makeText(MainActivity.this, "Saved: " + fileName, Toast.LENGTH_SHORT).show();
-                            finish();
-                        });
-                    });
-        } catch (Exception e) {
-            runOnUiThread(() -> {
-                Toast.makeText(this, "Save error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                finish();
-            });
+        } else {
+            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MyPicdate");
+            if (!dir.exists()) dir.mkdirs();
+            File file = new File(dir, fileName);
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
+            }
+            Intent scanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+            scanIntent.setData(Uri.fromFile(file));
+            sendBroadcast(scanIntent);
         }
     }
 
