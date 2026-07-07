@@ -153,7 +153,7 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) {
         } finally {
-            if (mmr != null) mmr.release();
+            if (mmr != null) try { mmr.release(); } catch (Exception ignored) {}
         }
 
         // 2: Direct MediaStore query on the URI itself (DATE_TAKEN, DATE_ADDED, DATE_MODIFIED)
