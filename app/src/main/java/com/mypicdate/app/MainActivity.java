@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
+import android.media.MediaScannerConnection;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -172,6 +173,8 @@ public class MainActivity extends Activity {
             scanIntent.setData(Uri.fromFile(file));
             sendBroadcast(scanIntent);
         }
+        String fullPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/MyPicdate/" + fileName;
+        MediaScannerConnection.scanFile(this, new String[]{fullPath}, null, null);
     }
 
     private void launchGallery() {
