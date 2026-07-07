@@ -126,6 +126,15 @@ public class MainActivity extends Activity {
     }
 
     private String getDateString(Uri uri) {
+        try (Cursor cursor = getContentResolver().query(uri, new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                long dateTaken = cursor.getLong(0);
+                if (dateTaken > 0) {
+                    return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(new Date(dateTaken));
+                }
+            }
+        } catch (Exception ignored) {}
+
         File tempFile = null;
         try {
             tempFile = File.createTempFile("exif_", ".jpg", getCacheDir());
@@ -139,17 +148,14 @@ public class MainActivity extends Activity {
             String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
             if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
             if (exifDate != null) {
-                SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
-                SimpleDateFormat outSdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
-                Date parsed = exifSdf.parse(exifDate);
-                if (parsed != null) return outSdf.format(parsed);
+                Date parsed = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(exifDate);
+                if (parsed != null) return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(parsed);
             }
         } catch (Exception ignored) {
         } finally {
             if (tempFile != null) tempFile.delete();
         }
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
-        return sdf.format(new Date());
+        return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(new Date());
     }
 
     private String getFileName(Uri uri) {
