@@ -296,17 +296,19 @@ public class MainActivity extends Activity {
             }
         }
 
-        // 7: Match by file size in MediaStore (MIUI secure share may preserve original size)
+        // 7: Find original by file size in MediaStore (original = temp + EXIF, ~2-100KB larger)
         if (dateTaken <= 0 && tempSize > 0) {
+            long szMin = tempSize + 2000;
+            long szMax = tempSize + 100000;
             try (Cursor c = getContentResolver().query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    new String[]{MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.BUCKET_DISPLAY_NAME},
-                    MediaStore.Images.Media.SIZE + " = ?",
-                    new String[]{String.valueOf(tempSize)},
+                    new String[]{MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DISPLAY_NAME},
+                    MediaStore.Images.Media.SIZE + " BETWEEN ? AND ?",
+                    new String[]{String.valueOf(szMin), String.valueOf(szMax)},
                     MediaStore.Images.Media.DATE_TAKEN + " DESC")) {
                 if (c != null) {
                     while (c.moveToNext() && dateTaken <= 0) {
-                        if (!c.isNull(0)) { long v = c.getLong(0); if (v > 0) { dateTaken = v; debugSrc = "SZ"; } }
+                        if (!c.isNull(0)) { long v = c.getLong(0); if (v > 0) { dateTaken = v; debugSrc = "SZr"; } }
                     }
                 }
             } catch (Exception ignored) {}
