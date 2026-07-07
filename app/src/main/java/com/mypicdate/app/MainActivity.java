@@ -2,6 +2,7 @@ package com.mypicdate.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
@@ -126,34 +127,68 @@ public class MainActivity extends Activity {
     }
 
     private String getDateString(Uri uri) {
-        try (Cursor cursor = getContentResolver().query(uri, new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                long dateTaken = cursor.getLong(0);
-                if (dateTaken > 0) {
-                    return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(new Date(dateTaken));
+        long dateTaken = 0;
+
+        try {
+            String mediaId = uri.getLastPathSegment();
+            if (mediaId != null && mediaId.matches("\\d+")) {
+                Uri mediaUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Long.parseLong(mediaId));
+                try (Cursor c = getContentResolver().query(mediaUri, new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
+                    if (c != null && c.moveToFirst()) dateTaken = c.getLong(0);
                 }
             }
         } catch (Exception ignored) {}
 
-        File tempFile = null;
-        try {
-            tempFile = File.createTempFile("exif_", ".jpg", getCacheDir());
-            try (InputStream is = getContentResolver().openInputStream(uri);
-                 FileOutputStream fos = new FileOutputStream(tempFile)) {
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+        if (dateTaken <= 0) {
+            try (Cursor c = getContentResolver().query(uri, new String[]{MediaStore.Images.Media.DATE_TAKEN}, null, null, null)) {
+                if (c != null && c.moveToFirst()) dateTaken = c.getLong(0);
+            } catch (Exception ignored) {}
+        }
+
+        if (dateTaken <= 0) {
+            try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.LAST_MODIFIED}, null, null, null)) {
+                if (c != null && c.moveToFirst()) {
+                    long lm = c.getLong(0);
+                    if (lm > 0) dateTaken = lm;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (dateTaken <= 0) {
+            File tempFile = null;
+            try {
+                tempFile = File.createTempFile("exif_", ".jpg", getCacheDir());
+                try (InputStream is = getContentResolver().openInputStream(uri);
+                     FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) > 0) fos.write(buf, 0, n);
+                }
+                ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
+                String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+                if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
+                if (exifDate != null) {
+                    Date parsed = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(exifDate);
+                    if (parsed != null) dateTaken = parsed.getTime();
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (tempFile != null) tempFile.delete();
             }
-            ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
-            String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
-            if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
-            if (exifDate != null) {
-                Date parsed = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(exifDate);
-                if (parsed != null) return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(parsed);
+        }
+
+        if (dateTaken <= 0 && originalName != null) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{8})[_-]?(\\d{6})").matcher(originalName);
+            if (m.find()) {
+                try {
+                    Date parsed = new SimpleDateFormat("yyyyMMdd HHmmss", Locale.US).parse(m.group(1) + m.group(2));
+                    if (parsed != null) dateTaken = parsed.getTime();
+                } catch (Exception ignored) {}
             }
-        } catch (Exception ignored) {
-        } finally {
-            if (tempFile != null) tempFile.delete();
+        }
+
+        if (dateTaken > 0) {
+            return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(new Date(dateTaken));
         }
         return new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault()).format(new Date());
     }
