@@ -12,10 +12,12 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.media.ExifInterface;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.widget.Toast;
@@ -125,15 +127,17 @@ public class MainActivity extends Activity {
     }
 
     private String getDateString(Uri uri) {
-        try (InputStream is = getContentResolver().openInputStream(uri)) {
-            ExifInterface exif = new ExifInterface(is);
-            String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
-            if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
-            if (exifDate != null) {
-                SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
-                SimpleDateFormat outSdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
-                Date parsed = exifSdf.parse(exifDate);
-                if (parsed != null) return outSdf.format(parsed);
+        try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
+            if (pfd != null) {
+                ExifInterface exif = new ExifInterface(pfd.getFileDescriptor());
+                String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+                if (exifDate == null) exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
+                if (exifDate != null) {
+                    SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
+                    SimpleDateFormat outSdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
+                    Date parsed = exifSdf.parse(exifDate);
+                    if (parsed != null) return outSdf.format(parsed);
+                }
             }
         } catch (Exception ignored) {}
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd HH:mm", Locale.getDefault());
@@ -161,6 +165,7 @@ public class MainActivity extends Activity {
     }
 
     private void saveToGallery(Bitmap bitmap, String fileName) throws Exception {
+        final Uri[] savedUriRef = {null};
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
@@ -168,14 +173,15 @@ public class MainActivity extends Activity {
             values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MyPicdate");
             values.put(MediaStore.Images.Media.IS_PENDING, 1);
 
-            Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-            if (uri != null) {
-                try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(uri)) {
+            savedUriRef[0] = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (savedUriRef[0] != null) {
+                try (FileOutputStream fos = (FileOutputStream) getContentResolver().openOutputStream(savedUriRef[0])) {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos);
                 }
                 values.clear();
                 values.put(MediaStore.Images.Media.IS_PENDING, 0);
-                getContentResolver().update(uri, values, null, null);
+                getContentResolver().update(savedUriRef[0], values, null, null);
+                getContentResolver().notifyChange(savedUriRef[0], null);
             }
         } else {
             File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "MyPicdate");
@@ -188,6 +194,16 @@ public class MainActivity extends Activity {
             scanIntent.setData(Uri.fromFile(file));
             sendBroadcast(scanIntent);
         }
+
+        String fullPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/MyPicdate/" + fileName;
+        MediaScannerConnection.scanFile(this, new String[]{fullPath}, null,
+                (path, scanUri) -> {
+                    if (savedUriRef[0] != null) {
+                        Intent broadcast = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                        broadcast.setData(savedUriRef[0]);
+                        sendBroadcast(broadcast);
+                    }
+                });
     }
 
     private void launchGallery() {
