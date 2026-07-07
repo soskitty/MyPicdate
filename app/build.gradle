@@ -18,12 +18,16 @@ android {
             storePassword '123456'
             keyAlias 'picdate'
             keyPassword '123456'
+            enableV1Signing true
+            enableV2Signing true
         }
         debug {
             storeFile file('picdate.keystore')
             storePassword '123456'
             keyAlias 'picdate'
             keyPassword '123456'
+            enableV1Signing true
+            enableV2Signing true
         }
     }
 
